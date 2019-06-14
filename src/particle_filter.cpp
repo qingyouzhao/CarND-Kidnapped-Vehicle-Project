@@ -30,6 +30,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
    * NOTE: Consult particle_filter.h for more information about this method 
    *   (and others in this file).
    */
+  // todo: I need a better number?
   constexpr int my_mum_particles = 1000;
   num_particles = my_mum_particles;  // TODO: Set the number of particles
   particles.clear();
