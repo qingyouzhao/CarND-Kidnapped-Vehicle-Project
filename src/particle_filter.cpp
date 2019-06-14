@@ -55,7 +55,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     // todo: emplace back possible?
     particles.push_back(p);
   }
-
+  is_initialized = true;
 }
 
 void ParticleFilter::prediction(double delta_t, double std_pos[], 
@@ -105,6 +105,8 @@ void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted,
    *   probably find it useful to implement this method and use it as a helper 
    *   during the updateWeights phase.
    */
+  // Mark observations with predicted?
+  // Find predicted measurement. 
 
 }
 
@@ -124,7 +126,47 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
    *   and the following is a good resource for the actual equation to implement
    *   (look at equation 3.33) http://planning.cs.uiuc.edu/node99.html
    */
+  // todo: look at update weight algo again.
+  // 
+/*
+    def measurement_prob(self, measurement):
+        prob = 1.0;
+        for i in range(len(landmarks)):
+            dist = sqrt((self.x - landmarks[i][0]) ** 2 + (self.y - landmarks[i][1]) ** 2)
+            prob *= self.Gaussian(dist, self.sense_noise, measurement[i])
+        return prob
+ */
+  // todo: how to convert from veh coord to map coord?
+  // we have veh pos and veh heading in particle system
+  // Then we can construct a translate with veh x,y, and rot from vec
+  for(Particle& p : particles)
+  {
+    //Simpson paradox. reason about
 
+    vector<LandmarkObs> predicted;
+    // Make our own array of observations
+    vector<LandmarkObs> observation_p = observations;
+    
+    // convert each landmark to predicted LandmarkObs by transforming lm to particle local space
+    for (const Map::single_landmark_s lm : map_landmarks.landmark_list)
+    {
+      
+    }
+
+    // Match obserations to p
+    dataAssociation(predicted, observation_p);
+    //
+    for (const LandmarkObs& obs : observations) 
+    {
+      double sig_x = 0.3;
+      double sig_y = 0.3;
+      double x_obs = obs.x;
+      double y_obs = obs.y;
+      double mu_x = 5;
+      double mu_y = 3;
+      double prob = multiv_prob(sig_x,sig_y,x_obs,y_obs,mu_x,mu_y);
+    }
+  }  
 }
 
 void ParticleFilter::resample() {
