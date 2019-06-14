@@ -30,7 +30,30 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
    * NOTE: Consult particle_filter.h for more information about this method 
    *   (and others in this file).
    */
-  num_particles = 0;  // TODO: Set the number of particles
+  constexpr int my_mum_particles = 1000;
+  num_particles = my_mum_particles;  // TODO: Set the number of particles
+  particles.clear();
+
+  std::default_random_engine gen;
+  const double& std_x     = std[0];
+  const double& std_y     = std[1];
+  const double& std_theta = std[2];
+  std::normal_distribution<double> dist_x(x, std_x);
+  std::normal_distribution<double> dist_y(y, std_y);
+  std::normal_distribution<double> dist_theta(theta, std_theta);
+
+  for (int i =0; i < num_particles; i++)
+  {
+    Particle p;
+    p.id      = i;
+    p.x       = dist_x(gen);
+    p.y       = dist_y(gen);
+    p.theta   = dist_theta(gen);
+    p.weight  = 1.0;
+    // todo: do I need to init the associations here?
+    // todo: emplace back possible?
+    particles.push_back(p);
+  }
 
 }
 
