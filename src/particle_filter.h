@@ -123,6 +123,7 @@ class ParticleFilter {
 
   private:
   // Helper functions
+    LandmarkObs GetMapSpaceObservation(const Particle& p, const LandmarkObs& obs_ps);
   
 };
 

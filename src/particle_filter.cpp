@@ -105,9 +105,23 @@ void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted,
    *   probably find it useful to implement this method and use it as a helper 
    *   during the updateWeights phase.
    */
-  // Mark observations with predicted?
+  // Match observations with predicted?
   // Find predicted measurement. 
-
+  for (LandmarkObs& ob : observations)
+  {
+    // find closest observation
+    double min_dist_sqr = std::numeric_limits<double>::max();
+    for (const LandmarkObs& prediction : predicted)
+    {
+      auto GetDistSqr = [](LandmarkObs ob1, LandmarkObs ob2) {return (ob1.x - ob2.x) *(ob1.x - ob2.x) + (ob1.y - ob2.y)*(ob1.y - ob2.y); };
+      const double dist_sqr = GetDistSqr(prediction, ob);
+      if (min_dist_sqr > dist_sqr)
+      {
+        min_dist_sqr = dist_sqr;
+        ob.id = prediction.id;
+      }
+    }
+  }
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
@@ -136,36 +150,60 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
             prob *= self.Gaussian(dist, self.sense_noise, measurement[i])
         return prob
  */
-  // todo: how to convert from veh coord to map coord?
-  // we have veh pos and veh heading in particle system
-  // Then we can construct a translate with veh x,y, and rot from vec
+  // todo: What does sensor range has to do with our observation.
+  // todo: What is std_landmark x, y in? map space?
+
+  // First we construct predicted LandmarkObs from landmarks in map space
+  vector<LandmarkObs> predicted;
+  for (const Map::single_landmark_s lm : map_landmarks.landmark_list)
+  {
+    LandmarkObs predicted_lm;
+    predicted_lm.id = lm.id_i;
+    predicted_lm.x = lm.x_f;
+    predicted_lm.y = lm.y_f;
+    predicted.emplace_back(predicted_lm);
+  }
+
+  // Then we update weight for each particle
   for(Particle& p : particles)
   {
-    //Simpson paradox. reason about
+    // p is in Map coordinate system.
+    // Make our own array of observations, this is in the vehicles's coordinate system
 
-    vector<LandmarkObs> predicted;
-    // Make our own array of observations
-    vector<LandmarkObs> observation_p = observations;
+    /*
+          x
+          |
+      y___|
+          Car
+    */
     
-    // convert each landmark to predicted LandmarkObs by transforming lm to particle local space
-    for (const Map::single_landmark_s lm : map_landmarks.landmark_list)
+    // Step 1: convert observations to map spaces
+    vector<LandmarkObs> observation_ms;
+    for (const LandmarkObs& obs_ps : observations)
     {
-      
+      observation_ms.emplace_back(GetMapSpaceObservation(p,obs_ps));
     }
+    
+    // Step2: Match observations with predicted, the observation id will be updated
+    dataAssociation(predicted, observation_ms);
 
-    // Match obserations to p
-    dataAssociation(predicted, observation_p);
-    //
+    // Step3: update weights based on observation and prediction
+    double final_weight = 1.0;
     for (const LandmarkObs& obs : observations) 
     {
-      double sig_x = 0.3;
-      double sig_y = 0.3;
-      double x_obs = obs.x;
+      auto IsMatchingObs = [&obs](LandmarkObs pred) {return pred.id == obs.id; };
+      LandmarkObs matching_prediction = *std::find_if(predicted.begin(), predicted.end(), IsMatchingObs);
+      double sig_x = std_landmark[0];
+      double sig_y = std_landmark[1];
+      double x_obs = obs.x; // Map space of obs
       double y_obs = obs.y;
-      double mu_x = 5;
-      double mu_y = 3;
+      double mu_x = matching_prediction.x; // map space of LM
+      double mu_y = matching_prediction.y;
       double prob = multiv_prob(sig_x,sig_y,x_obs,y_obs,mu_x,mu_y);
+      final_weight *= prob;
     }
+    p.weight = final_weight;
+    // Then we have to update weights
   }  
 }
 
@@ -216,4 +254,13 @@ string ParticleFilter::getSenseCoord(Particle best, string coord) {
   string s = ss.str();
   s = s.substr(0, s.length()-1);  // get rid of the trailing space
   return s;
+}
+
+LandmarkObs ParticleFilter::GetMapSpaceObservation(const Particle& p, const LandmarkObs& obs_ps)
+{
+  LandmarkObs obs_ms; // map space wrt to current particle
+  obs_ms.id = obs_ps.id; // This doesn't matter because obs does not have ids;
+  obs_ms.x = p.x + cos(p.theta) * obs_ps.x - sin(p.theta) * obs_ps.y;
+  obs_ms.y = p.y + sin(p.theta) * obs_ps.x - cos(p.theta) * obs_ps.y;
+  return obs_ms;
 }
