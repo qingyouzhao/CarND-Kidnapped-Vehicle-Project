@@ -113,7 +113,7 @@ class ParticleFilter {
 
  private:
   // Number of particles to draw
-  int num_particles; 
+  unsigned int num_particles; 
   
   // Flag, if filter is initialized
   bool is_initialized;
@@ -123,8 +123,10 @@ class ParticleFilter {
 
   private:
   // Helper functions
-    LandmarkObs GetMapSpaceObservation(const Particle& p, const LandmarkObs& obs_ps);
-  
+  LandmarkObs GetMapSpaceObservation(const Particle& p, const LandmarkObs& obs_ps);
+
+  void PrintParticle(const Particle& p) const;
+  void PrintLandmarkObs(const LandmarkObs& obs) const;
 };
 
 #endif  // PARTICLE_FILTER_H_

@@ -15,6 +15,7 @@
 #include <random>
 #include <string>
 #include <vector>
+#include <assert.h>
 
 #include "helper_functions.h"
 
@@ -43,7 +44,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
   std::normal_distribution<double> dist_y(y, std_y);
   std::normal_distribution<double> dist_theta(theta, std_theta);
 
-  for (int i =0; i < num_particles; i++)
+  for (unsigned int i =0; i < num_particles; i++)
   {
     Particle p;
     p.id      = i;
@@ -55,6 +56,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     // todo: emplace back possible?
     particles.push_back(p);
   }
+  assert(particles.size() == num_particles);
   is_initialized = true;
 }
 
@@ -77,6 +79,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
   std::normal_distribution<double> dist_y(0.0, std_y);
   std::normal_distribution<double> dist_theta(0.0, std_theta);
 
+  // Predict new state based on v and yaw_rate;
   for(Particle& p : particles)
   {
     // Retrieve old states
@@ -164,6 +167,12 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     predicted.emplace_back(predicted_lm);
   }
 
+  for (LandmarkObs lmobs : predicted)
+  {
+    std::cout << "Debug predicted id = " << lmobs.id << std::endl;
+    std::cout << "x_obs = " << lmobs.x << std::endl;
+    std::cout << "y_obs = " << lmobs.y << std::endl;
+  }
   // Then we update weight for each particle
   for(Particle& p : particles)
   {
@@ -179,11 +188,18 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     
     // Step 1: convert observations to map spaces
     vector<LandmarkObs> observation_ms;
+    PrintParticle(p);
     for (const LandmarkObs& obs_ps : observations)
     {
-      observation_ms.emplace_back(GetMapSpaceObservation(p,obs_ps));
+      std::cout << "Particle space" << std::endl;
+      PrintLandmarkObs(obs_ps);
+      LandmarkObs obs_ms = GetMapSpaceObservation(p, obs_ps);
+      std::cout << "Map space" << std::endl;
+      PrintLandmarkObs(obs_ms);
+      observation_ms.push_back(obs_ms);
     }
     
+    assert(false);
     // Step2: Match observations with predicted, the observation id will be updated
     dataAssociation(predicted, observation_ms);
 
@@ -198,8 +214,17 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
       double x_obs = obs.x; // Map space of obs
       double y_obs = obs.y;
       double mu_x = matching_prediction.x; // map space of LM
-      double mu_y = matching_prediction.y;
+      double mu_y = matching_prediction.y; 
+      std::cout << "Debug prob id = " << obs.id <<  std::endl;
+      std::cout << "x_obs = "<< x_obs << std::endl;
+      std::cout << "y_obs = "<< y_obs<< std::endl;
+      std::cout << "mu_x = " << mu_x << std::endl;
+      std::cout << "mu_y = " << mu_y << std::endl;
+
+
       double prob = multiv_prob(sig_x,sig_y,x_obs,y_obs,mu_x,mu_y);
+      std::cout << "prob = " << prob << std::endl;
+
       final_weight *= prob;
     }
     p.weight = final_weight;
@@ -214,6 +239,25 @@ void ParticleFilter::resample() {
    * NOTE: You may find std::discrete_distribution helpful here.
    *   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
    */
+  weights.empty();
+  for (unsigned int i = 0; i < particles.size(); i++)
+  {
+    weights.push_back(particles[i].weight);
+  }
+  std::discrete_distribution<int> weight_dist(weights.begin(), weights.end());
+  std::default_random_engine gen;
+
+  // Set of current particles
+  std::vector<Particle> resampled_particles;
+  for (unsigned int n = 0; n < num_particles; n++)
+  {
+    int sample_index = weight_dist(gen);
+    if(n%100 == 0)
+      PrintParticle(particles[sample_index]);
+    resampled_particles.push_back(particles[sample_index]);
+  }
+
+  assert(resampled_particles.size() == num_particles);
 
 }
 
@@ -259,8 +303,25 @@ string ParticleFilter::getSenseCoord(Particle best, string coord) {
 LandmarkObs ParticleFilter::GetMapSpaceObservation(const Particle& p, const LandmarkObs& obs_ps)
 {
   LandmarkObs obs_ms; // map space wrt to current particle
-  obs_ms.id = obs_ps.id; // This doesn't matter because obs does not have ids;
   obs_ms.x = p.x + cos(p.theta) * obs_ps.x - sin(p.theta) * obs_ps.y;
   obs_ms.y = p.y + sin(p.theta) * obs_ps.x - cos(p.theta) * obs_ps.y;
   return obs_ms;
+}
+
+void ParticleFilter::PrintParticle(const Particle& p) const
+{
+  std::cout << "Particle: { " << std::endl;
+  std::cout << "id: " << p.id << std::endl;
+  std::cout << "x: " << p.x << std::endl;
+  std::cout << "y: " << p.y << std::endl;
+  std::cout << "theta: " << p.theta << std::endl;
+  std::cout << "weight: " << p.weight << " }" << std::endl;
+}
+
+void ParticleFilter::PrintLandmarkObs(const LandmarkObs& obs) const
+{
+  std::cout << "LandmarkObs: { " << std::endl;
+  std::cout << "id: " << obs.id << std::endl;
+  std::cout << "x: " << obs.x << std::endl;
+  std::cout << "y: " << obs.y << std::endl;
 }
