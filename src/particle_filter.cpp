@@ -52,8 +52,9 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     p.y       = dist_y(gen);
     p.theta   = dist_theta(gen);
     p.weight  = 1.0;
+    // PrintParticle(p);
+    // I can confirm particles are initialized fine.
     // todo: do I need to init the associations here?
-    // todo: emplace back possible?
     particles.push_back(p);
   }
   assert(particles.size() == num_particles);
@@ -74,6 +75,17 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
   const double& std_x     = std_pos[0];
   const double& std_y     = std_pos[1];
   const double& std_theta = std_pos[2];
+
+  //std::cout << "Prediction step" << std::endl;
+  //std::cout << "delta_t = " << delta_t << std::endl;
+  //std::cout << "velocity = " << velocity << std::endl;
+  //std::cout << "yaw_rate = " << yaw_rate << std::endl;
+
+
+  //std::cout << "std_x = "<< std_x  << std::endl;
+  //std::cout << "std_y = " << std_y << std::endl;
+  //std::cout << "std_theta = "<< std_theta << std::endl;
+
   
   std::normal_distribution<double> dist_x(0.0, std_x);
   std::normal_distribution<double> dist_y(0.0, std_y);
@@ -82,19 +94,24 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
   // Predict new state based on v and yaw_rate;
   for(Particle& p : particles)
   {
+    //std::cout << "before prediction step" << std::endl;
+    //PrintParticle(p);
     // Retrieve old states
     const double x0 = p.x;
     const double y0 = p.y;
     const double theta0 = p.theta;
     // Calculate new states
-    const double xf = x0 + velocity / yaw_rate * (sin(theta0 + yaw_rate*delta_t) - sin(theta0));
-    const double yf = y0 + velocity / yaw_rate * (cos(theta0) - cos(theta0+yaw_rate*delta_t));
-    const double thetaf = theta0 + theta0*delta_t;
+    const double delta_yaw = yaw_rate * delta_t;
+    const double thetaf = theta0 + delta_yaw;
+    const double xf = x0 + velocity / yaw_rate * (sin(thetaf) - sin(theta0));
+    const double yf = y0 + velocity / yaw_rate * (cos(theta0) - cos(thetaf));
     // Update new states to particle and add noise
     // todo: verify this is the correct noise we want to add.
     p.x = xf + dist_x(gen);
     p.y = yf + dist_y(gen);
     p.theta = thetaf + dist_theta(gen);
+    //std::cout << "After prediction step" << std::endl;
+    //PrintParticle(p);
   }
 }
 
@@ -145,18 +162,12 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
    */
   // todo: look at update weight algo again.
   // 
-/*
-    def measurement_prob(self, measurement):
-        prob = 1.0;
-        for i in range(len(landmarks)):
-            dist = sqrt((self.x - landmarks[i][0]) ** 2 + (self.y - landmarks[i][1]) ** 2)
-            prob *= self.Gaussian(dist, self.sense_noise, measurement[i])
-        return prob
- */
   // todo: What does sensor range has to do with our observation.
   // todo: What is std_landmark x, y in? map space?
 
   // First we construct predicted LandmarkObs from landmarks in map space
+  std::cout << "Begin " << "updateWeights" << std::endl;
+
   vector<LandmarkObs> predicted;
   for (const Map::single_landmark_s lm : map_landmarks.landmark_list)
   {
@@ -164,48 +175,37 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     predicted_lm.id = lm.id_i;
     predicted_lm.x = lm.x_f;
     predicted_lm.y = lm.y_f;
+    // PrintLandmarkObs(predicted_lm);
     predicted.emplace_back(predicted_lm);
   }
 
-  for (LandmarkObs lmobs : predicted)
-  {
-    std::cout << "Debug predicted id = " << lmobs.id << std::endl;
-    std::cout << "x_obs = " << lmobs.x << std::endl;
-    std::cout << "y_obs = " << lmobs.y << std::endl;
-  }
   // Then we update weight for each particle
   for(Particle& p : particles)
   {
     // p is in Map coordinate system.
     // Make our own array of observations, this is in the vehicles's coordinate system
 
-    /*
-          x
-          |
-      y___|
-          Car
-    */
     
     // Step 1: convert observations to map spaces
     vector<LandmarkObs> observation_ms;
-    PrintParticle(p);
     for (const LandmarkObs& obs_ps : observations)
     {
-      std::cout << "Particle space" << std::endl;
-      PrintLandmarkObs(obs_ps);
+      //std::cout << "Particle space" << std::endl;
+      //PrintLandmarkObs(obs_ps);
       LandmarkObs obs_ms = GetMapSpaceObservation(p, obs_ps);
-      std::cout << "Map space" << std::endl;
-      PrintLandmarkObs(obs_ms);
-      observation_ms.push_back(obs_ms);
+      //std::cout << "Map space" << std::endl;
+      //PrintLandmarkObs(obs_ms);
+      if(dist(obs_ms.x, obs_ms.y, p.x, p.y) < sensor_range)
+        observation_ms.push_back(obs_ms);
     }
+
     
-    assert(false);
     // Step2: Match observations with predicted, the observation id will be updated
     dataAssociation(predicted, observation_ms);
 
     // Step3: update weights based on observation and prediction
-    double final_weight = 1.0;
-    for (const LandmarkObs& obs : observations) 
+    double final_weight = observation_ms.size() == 0 ? 0.0 : 1.0;
+    for (const LandmarkObs& obs : observation_ms)
     {
       auto IsMatchingObs = [&obs](LandmarkObs pred) {return pred.id == obs.id; };
       LandmarkObs matching_prediction = *std::find_if(predicted.begin(), predicted.end(), IsMatchingObs);
@@ -215,21 +215,24 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
       double y_obs = obs.y;
       double mu_x = matching_prediction.x; // map space of LM
       double mu_y = matching_prediction.y; 
-      std::cout << "Debug prob id = " << obs.id <<  std::endl;
-      std::cout << "x_obs = "<< x_obs << std::endl;
-      std::cout << "y_obs = "<< y_obs<< std::endl;
-      std::cout << "mu_x = " << mu_x << std::endl;
-      std::cout << "mu_y = " << mu_y << std::endl;
-
-
+      //std::cout << "Debug prob id = " << obs.id <<  std::endl;
+      //std::cout << "x_obs = "<< x_obs << std::endl;
+      //std::cout << "y_obs = "<< y_obs<< std::endl;
+      //std::cout << "mu_x = " << mu_x << std::endl;
+      //std::cout << "mu_y = " << mu_y << std::endl;
       double prob = multiv_prob(sig_x,sig_y,x_obs,y_obs,mu_x,mu_y);
-      std::cout << "prob = " << prob << std::endl;
-
       final_weight *= prob;
     }
     p.weight = final_weight;
+    if (p.weight > 100000000)
+    {
+      std::cout << "p.id = " << p.id << " final p.weight = " << p.weight << std::endl;
+      PrintParticle(p);
+    }
     // Then we have to update weights
   }  
+  std::cout << "End " << "updateWeights" << std::endl;
+  
 }
 
 void ParticleFilter::resample() {
@@ -239,7 +242,9 @@ void ParticleFilter::resample() {
    * NOTE: You may find std::discrete_distribution helpful here.
    *   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
    */
-  weights.empty();
+  std::cout << "Begin " << "resample" << std::endl;
+
+  weights.clear();
   for (unsigned int i = 0; i < particles.size(); i++)
   {
     weights.push_back(particles[i].weight);
@@ -252,12 +257,11 @@ void ParticleFilter::resample() {
   for (unsigned int n = 0; n < num_particles; n++)
   {
     int sample_index = weight_dist(gen);
-    if(n%100 == 0)
-      PrintParticle(particles[sample_index]);
     resampled_particles.push_back(particles[sample_index]);
   }
 
   assert(resampled_particles.size() == num_particles);
+  std::cout << "End " << "resample" << std::endl;
 
 }
 
@@ -302,9 +306,16 @@ string ParticleFilter::getSenseCoord(Particle best, string coord) {
 
 LandmarkObs ParticleFilter::GetMapSpaceObservation(const Particle& p, const LandmarkObs& obs_ps)
 {
+  /*
+      x        y
+      |        |
+  y___|        |____x
+      Car     Map
+*/
+
   LandmarkObs obs_ms; // map space wrt to current particle
   obs_ms.x = p.x + cos(p.theta) * obs_ps.x - sin(p.theta) * obs_ps.y;
-  obs_ms.y = p.y + sin(p.theta) * obs_ps.x - cos(p.theta) * obs_ps.y;
+  obs_ms.y = p.y + sin(p.theta) * obs_ps.x + cos(p.theta) * obs_ps.y;
   return obs_ms;
 }
 
@@ -316,6 +327,7 @@ void ParticleFilter::PrintParticle(const Particle& p) const
   std::cout << "y: " << p.y << std::endl;
   std::cout << "theta: " << p.theta << std::endl;
   std::cout << "weight: " << p.weight << " }" << std::endl;
+  std::cout << std::endl;
 }
 
 void ParticleFilter::PrintLandmarkObs(const LandmarkObs& obs) const
@@ -324,4 +336,5 @@ void ParticleFilter::PrintLandmarkObs(const LandmarkObs& obs) const
   std::cout << "id: " << obs.id << std::endl;
   std::cout << "x: " << obs.x << std::endl;
   std::cout << "y: " << obs.y << std::endl;
+  std::cout << std::endl;
 }
