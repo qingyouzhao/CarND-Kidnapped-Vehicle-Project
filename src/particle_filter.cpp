@@ -61,19 +61,19 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
   is_initialized = true;
 }
 
-void ParticleFilter::prediction(double delta_t, double std_pos[], 
-                                double velocity, double yaw_rate) {
+void ParticleFilter::prediction(double delta_t, double std_pos[],
+  double velocity, double yaw_rate) {
   /**
    * TODO: Add measurements to each particle and add random Gaussian noise.
-   * NOTE: When adding noise you may find std::normal_distribution 
+   * NOTE: When adding noise you may find std::normal_distribution
    *   and std::default_random_engine useful.
    *  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
    *  http://www.cplusplus.com/reference/random/default_random_engine/
    */
-  // prepare gen
+   // prepare gen
   std::default_random_engine gen;
-  const double& std_x     = std_pos[0];
-  const double& std_y     = std_pos[1];
+  const double& std_x = std_pos[0];
+  const double& std_y = std_pos[1];
   const double& std_theta = std_pos[2];
 
   //std::cout << "Prediction step" << std::endl;
@@ -86,14 +86,16 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
   //std::cout << "std_y = " << std_y << std::endl;
   //std::cout << "std_theta = "<< std_theta << std::endl;
 
-  
+
   std::normal_distribution<double> dist_x(0.0, std_x);
   std::normal_distribution<double> dist_y(0.0, std_y);
   std::normal_distribution<double> dist_theta(0.0, std_theta);
 
   // Predict new state based on v and yaw_rate;
-  for(Particle& p : particles)
+  for (Particle& p : particles)
   {
+    assert(!std::isnan(p.x));
+    assert(!std::isnan(p.y));
     //std::cout << "before prediction step" << std::endl;
     //PrintParticle(p);
     // Retrieve old states
@@ -109,6 +111,11 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
     // todo: verify this is the correct noise we want to add.
     p.x = xf + dist_x(gen);
     p.y = yf + dist_y(gen);
+    if( (std::isnan(p.x)) || (std::isnan(p.y)))
+    {
+      p.x = x0;
+      p.y = y0;
+    }
     p.theta = thetaf + dist_theta(gen);
     //std::cout << "After prediction step" << std::endl;
     //PrintParticle(p);
@@ -166,8 +173,8 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
   // todo: What is std_landmark x, y in? map space?
 
   // First we construct predicted LandmarkObs from landmarks in map space
-  std::cout << "Begin " << "updateWeights" << std::endl;
-
+  // std::cout << "Begin " << "updateWeights" << std::endl;
+  assert(observations.size() != 0);
   vector<LandmarkObs> predicted;
   for (const Map::single_landmark_s lm : map_landmarks.landmark_list)
   {
@@ -182,21 +189,16 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
   // Then we update weight for each particle
   for(Particle& p : particles)
   {
-    // p is in Map coordinate system.
-    // Make our own array of observations, this is in the vehicles's coordinate system
+    assert(!std::isnan(p.x));
+    assert(!std::isnan(p.y));
 
-    
-    // Step 1: convert observations to map spaces
+    // p is in Map coordinate system.
+    // Step 1: convert observations to map spaces based on p position
     vector<LandmarkObs> observation_ms;
     for (const LandmarkObs& obs_ps : observations)
     {
-      //std::cout << "Particle space" << std::endl;
-      //PrintLandmarkObs(obs_ps);
       LandmarkObs obs_ms = GetMapSpaceObservation(p, obs_ps);
-      //std::cout << "Map space" << std::endl;
-      //PrintLandmarkObs(obs_ms);
-      if(dist(obs_ms.x, obs_ms.y, p.x, p.y) < sensor_range)
-        observation_ms.push_back(obs_ms);
+      observation_ms.push_back(obs_ms);
     }
 
     
@@ -204,7 +206,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     dataAssociation(predicted, observation_ms);
 
     // Step3: update weights based on observation and prediction
-    double final_weight = observation_ms.size() == 0 ? 0.0 : 1.0;
+    double final_weight = 1.0;
     for (const LandmarkObs& obs : observation_ms)
     {
       auto IsMatchingObs = [&obs](LandmarkObs pred) {return pred.id == obs.id; };
@@ -215,23 +217,20 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
       double y_obs = obs.y;
       double mu_x = matching_prediction.x; // map space of LM
       double mu_y = matching_prediction.y; 
-      //std::cout << "Debug prob id = " << obs.id <<  std::endl;
-      //std::cout << "x_obs = "<< x_obs << std::endl;
-      //std::cout << "y_obs = "<< y_obs<< std::endl;
-      //std::cout << "mu_x = " << mu_x << std::endl;
-      //std::cout << "mu_y = " << mu_y << std::endl;
       double prob = multiv_prob(sig_x,sig_y,x_obs,y_obs,mu_x,mu_y);
+      if (prob < 0.0)
+      {
+        PrintLandmarkObs(obs);
+        PrintParticle(p);
+        assert(false);
+      }
       final_weight *= prob;
     }
     p.weight = final_weight;
-    if (p.weight > 100000000)
-    {
-      std::cout << "p.id = " << p.id << " final p.weight = " << p.weight << std::endl;
-      PrintParticle(p);
-    }
+    assert(p.weight >= 0.0);
     // Then we have to update weights
   }  
-  std::cout << "End " << "updateWeights" << std::endl;
+  // /std::cout << "End " << "updateWeights" << std::endl;
   
 }
 
@@ -242,9 +241,10 @@ void ParticleFilter::resample() {
    * NOTE: You may find std::discrete_distribution helpful here.
    *   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
    */
-  std::cout << "Begin " << "resample" << std::endl;
+  // std::cout << "Begin " << "resample" << std::endl;
 
   weights.clear();
+  assert(particles.size() == num_particles);
   for (unsigned int i = 0; i < particles.size(); i++)
   {
     weights.push_back(particles[i].weight);
@@ -257,12 +257,14 @@ void ParticleFilter::resample() {
   for (unsigned int n = 0; n < num_particles; n++)
   {
     int sample_index = weight_dist(gen);
+    assert(particles[sample_index].weight >= 0.0);
     resampled_particles.push_back(particles[sample_index]);
   }
 
   assert(resampled_particles.size() == num_particles);
-  std::cout << "End " << "resample" << std::endl;
-
+  particles.swap(resampled_particles);
+  assert(particles.size() == num_particles);
+  // std::cout << "End " << "resample" << std::endl;
 }
 
 void ParticleFilter::SetAssociations(Particle& particle, 
